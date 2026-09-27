@@ -322,7 +322,7 @@ export default function EventDetailsPage() {
                   {userData?.role === "LEAD" && (
                     <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
                       <h4 className="text-sm font-medium text-zinc-500 mb-2">Assign Additional Designer</h4>
-                      <Select onValueChange={(val) => handleAssignAdditionalDesigner(val)}>
+                      <Select onValueChange={(val: string | null) => val && handleAssignAdditionalDesigner(val)}>
                         <SelectTrigger className="h-8 text-xs">
                           <SelectValue placeholder="Select a designer" />
                         </SelectTrigger>
