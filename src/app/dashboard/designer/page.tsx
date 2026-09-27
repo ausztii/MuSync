@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 export default function DesignerDashboard() {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
-  
+
   const [events, setEvents] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [denyReason, setDenyReason] = useState("");
@@ -75,20 +75,31 @@ export default function DesignerDashboard() {
       });
 
       if (status === "APPROVED") {
+        const eventToUpdate = events.find(e => e.id === eventId);
+        const currentIds = eventToUpdate?.assignedDesignerIds || [];
+        if (eventToUpdate?.assignedDesignerId && !currentIds.includes(eventToUpdate.assignedDesignerId)) {
+          currentIds.push(eventToUpdate.assignedDesignerId);
+        }
         await updateDoc(doc(db, "events", eventId), {
-          assignedDesignerId: user?.uid,
+          assignedDesignerIds: currentIds.includes(user?.uid) ? currentIds : [...currentIds, user?.uid],
           status: "IN_PROGRESS",
         });
         await updateDoc(doc(db, "users", user!.uid), {
           status: "WORKING",
         });
       } else {
+        const eventToUpdate = events.find(e => e.id === eventId);
+        let currentIds = eventToUpdate?.assignedDesignerIds || [];
+        if (eventToUpdate?.assignedDesignerId && !currentIds.includes(eventToUpdate.assignedDesignerId)) {
+          currentIds.push(eventToUpdate.assignedDesignerId);
+        }
+        currentIds = currentIds.filter((id: string) => id !== user?.uid);
         await updateDoc(doc(db, "events", eventId), {
-          assignedDesignerId: null,
-          status: "UNASSIGNED",
+          assignedDesignerIds: currentIds,
+          status: currentIds.length > 0 ? "IN_PROGRESS" : "UNASSIGNED",
         });
       }
-      
+
       toast.success(`Request ${status.toLowerCase()}`);
       setSelectedRequestId(null);
       setDenyReason("");
@@ -99,7 +110,7 @@ export default function DesignerDashboard() {
 
   if (loading || !userData) return <div className="flex h-screen items-center justify-center">Loading...</div>;
 
-  const myEvents = events.filter(e => e.assignedDesignerId === user?.uid);
+  const myEvents = events.filter(e => (e.assignedDesignerIds || []).includes(user?.uid) || e.assignedDesignerId === user?.uid);
   const unassignedEvents = events.filter(e => e.status === "UNASSIGNED");
   const pendingRequests = requests.filter(r => r.status === "PENDING" && r.type === "LEAD_ASSIGNMENT");
 
@@ -126,7 +137,7 @@ export default function DesignerDashboard() {
           <TabsTrigger value="requests">Incoming Requests {pendingRequests.length > 0 && <Badge className="ml-2 bg-rose-500">{pendingRequests.length}</Badge>}</TabsTrigger>
           <TabsTrigger value="unassigned">Open Events</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="my-tasks" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {myEvents.map(event => (
@@ -166,13 +177,13 @@ export default function DesignerDashboard() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-zinc-600 mb-4">{event.oneLiner}</p>
-                    <div className="flex gap-2">
-                      <Button onClick={() => handleRespondRequest(req.id, event.id, "APPROVED")} className="bg-emerald-600 hover:bg-emerald-700 w-full flex gap-2">
+                    <div className="flex gap-2 w-full">
+                      <Button onClick={() => handleRespondRequest(req.id, event.id, "APPROVED")} className="bg-emerald-600 hover:bg-emerald-700 flex-1 flex items-center justify-center gap-2">
                         <Check className="h-4 w-4" /> Accept
                       </Button>
-                      
+
                       <Dialog open={selectedRequestId === req.id} onOpenChange={(open) => !open && setSelectedRequestId(null)}>
-                        <DialogTrigger render={<Button variant="destructive" className="w-full flex gap-2" onClick={() => setSelectedRequestId(req.id)} />}>
+                        <DialogTrigger render={<Button variant="destructive" className="flex-1 flex items-center justify-center gap-2" onClick={() => setSelectedRequestId(req.id)} />}>
                           <X className="h-4 w-4" /> Deny
                         </DialogTrigger>
                         <DialogContent>
@@ -181,8 +192,8 @@ export default function DesignerDashboard() {
                           </DialogHeader>
                           <div className="py-4">
                             <Label>Reason for denying</Label>
-                            <Textarea 
-                              placeholder="I am currently overloaded with exams..." 
+                            <Textarea
+                              placeholder="I am currently overloaded with exams..."
                               value={denyReason}
                               onChange={(e) => setDenyReason(e.target.value)}
                               className="mt-2"
@@ -228,8 +239,8 @@ export default function DesignerDashboard() {
                         <p className="text-xs text-rose-900 dark:text-rose-200">Reason: {deniedRequest.reason}</p>
                       </div>
                     )}
-                    <Button 
-                      className="w-full" 
+                    <Button
+                      className="w-full"
                       variant={hasRequested ? "secondary" : "default"}
                       disabled={hasRequested || !!deniedRequest}
                       onClick={() => handleRequestEvent(event.id)}

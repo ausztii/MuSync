@@ -23,11 +23,11 @@ import { signOut } from "firebase/auth";
 export default function LeadDashboard() {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
-  
+
   const [designers, setDesigners] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
-  
+
   const [newEvent, setNewEvent] = useState({ name: "", date: "", oneLiner: "", designerId: "" });
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("Requirement already satisfied");
@@ -41,7 +41,7 @@ export default function LeadDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    
+
     const unsubscribeDesigners = onSnapshot(query(collection(db, "users")), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((u: any) => u.role === "DESIGNER");
       setDesigners(data);
@@ -69,7 +69,7 @@ export default function LeadDashboard() {
       toast.error("Please fill all required fields");
       return;
     }
-    
+
     try {
       const eventRef = await addDoc(collection(db, "events"), {
         name: newEvent.name,
@@ -80,7 +80,7 @@ export default function LeadDashboard() {
         isHidden: false,
         createdAt: serverTimestamp(),
       });
-      
+
       if (newEvent.designerId) {
         await addDoc(collection(db, "requests"), {
           eventId: eventRef.id,
@@ -90,7 +90,7 @@ export default function LeadDashboard() {
           createdAt: serverTimestamp(),
         });
       }
-      
+
       toast.success("Event created successfully");
       setIsEventModalOpen(false);
       setNewEvent({ name: "", date: "", oneLiner: "", designerId: "" });
@@ -102,9 +102,18 @@ export default function LeadDashboard() {
   const handleAssignDesigner = async (eventId: string, designerId: string) => {
     if (!designerId || designerId === "none") return;
     try {
+      const eventToUpdate = events.find(e => e.id === eventId);
+      const currentIds = eventToUpdate?.assignedDesignerIds || [];
+      if (eventToUpdate?.assignedDesignerId && !currentIds.includes(eventToUpdate.assignedDesignerId)) {
+        currentIds.push(eventToUpdate.assignedDesignerId);
+      }
+      if (currentIds.includes(designerId)) {
+        toast.error("Designer already assigned or requested");
+        return;
+      }
       await updateDoc(doc(db, "events", eventId), {
         status: "PENDING_CONFIRMATION",
-        assignedDesignerId: designerId,
+        assignedDesignerIds: [...currentIds, designerId],
       });
       await addDoc(collection(db, "requests"), {
         eventId,
@@ -142,6 +151,31 @@ export default function LeadDashboard() {
     }
   };
 
+  const handleCompleteEvent = async (eventId: string) => {
+    if (!confirm("Are you sure you want to mark this event as completed?")) return;
+    try {
+      const eventToComplete = events.find(e => e.id === eventId);
+      await updateDoc(doc(db, "events", eventId), {
+        status: "COMPLETED",
+      });
+      
+      const designerIds = eventToComplete?.assignedDesignerIds || [];
+      if (eventToComplete?.assignedDesignerId && !designerIds.includes(eventToComplete.assignedDesignerId)) {
+        designerIds.push(eventToComplete.assignedDesignerId);
+      }
+      
+      for (const dId of designerIds) {
+        await updateDoc(doc(db, "users", dId), {
+          status: "FREE",
+        });
+      }
+
+      toast.success("Event marked as completed");
+    } catch (error: any) {
+      toast.error("Failed to complete event: " + error.message);
+    }
+  };
+
   const handleRequestStatusUpdate = async (eventId: string) => {
     try {
       await addDoc(collection(db, `events/${eventId}/comments`), {
@@ -167,15 +201,20 @@ export default function LeadDashboard() {
       });
 
       if (status === "APPROVED") {
+        const eventToUpdate = events.find(e => e.id === eventId);
+        const currentIds = eventToUpdate?.assignedDesignerIds || [];
+        if (eventToUpdate?.assignedDesignerId && !currentIds.includes(eventToUpdate.assignedDesignerId)) {
+          currentIds.push(eventToUpdate.assignedDesignerId);
+        }
         await updateDoc(doc(db, "events", eventId), {
-          assignedDesignerId: designerId,
+          assignedDesignerIds: currentIds.includes(designerId) ? currentIds : [...currentIds, designerId],
           status: "IN_PROGRESS",
         });
         await updateDoc(doc(db, "users", designerId), {
           status: "WORKING",
         });
       }
-      
+
       if (status === "DENIED") {
         setSelectedRejectRequestId(null);
         setRejectReason("Requirement already satisfied");
@@ -214,7 +253,7 @@ export default function LeadDashboard() {
           <TabsTrigger value="requests">Incoming Requests {pendingRequests.length > 0 && <Badge className="ml-2 bg-indigo-500">{pendingRequests.length}</Badge>}</TabsTrigger>
           <TabsTrigger value="designers">Designers</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="events" className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-semibold tracking-tight">All Events</h2>
@@ -229,19 +268,19 @@ export default function LeadDashboard() {
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Event Name</Label>
-                    <Input id="name" value={newEvent.name} onChange={e => setNewEvent({...newEvent, name: e.target.value})} placeholder="Tech Symposium 2026" />
+                    <Input id="name" value={newEvent.name} onChange={e => setNewEvent({ ...newEvent, name: e.target.value })} placeholder="Tech Symposium 2026" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="date">Date</Label>
-                    <Input id="date" type="date" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                    <Label htmlFor="date">Event Date</Label>
+                    <Input id="date" type="date" value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="oneLiner">One Liner</Label>
-                    <Input id="oneLiner" value={newEvent.oneLiner} onChange={e => setNewEvent({...newEvent, oneLiner: e.target.value})} placeholder="A symposium for tech enthusiasts" />
+                    <Input id="oneLiner" value={newEvent.oneLiner} onChange={e => setNewEvent({ ...newEvent, oneLiner: e.target.value })} placeholder="A symposium for tech enthusiasts" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="designer">Assign Designer (Optional)</Label>
-                    <Select onValueChange={(val: string | null) => setNewEvent({...newEvent, designerId: val === "none" || val === null ? "" : val})}>
+                    <Select onValueChange={(val: string | null) => setNewEvent({ ...newEvent, designerId: val === "none" || val === null ? "" : val })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a designer" />
                       </SelectTrigger>
@@ -260,7 +299,7 @@ export default function LeadDashboard() {
               </DialogContent>
             </Dialog>
           </div>
-          
+
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {events.map((event) => {
               const designer = designers.find(d => d.id === event.assignedDesignerId);
@@ -281,7 +320,7 @@ export default function LeadDashboard() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-zinc-500 mb-4 line-clamp-2">{event.oneLiner}</p>
-                      
+
                       {event.latestStatusUpdate && (
                         <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/40 p-3 border border-amber-200 dark:border-amber-900/50">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-500 mb-1">Latest Status</p>
@@ -289,13 +328,26 @@ export default function LeadDashboard() {
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 mt-auto pt-2 text-sm font-medium border-t border-zinc-100 dark:border-zinc-800/50">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-xs bg-zinc-200 text-zinc-700">{designer ? designer.name[0] : "?"}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-zinc-700 dark:text-zinc-300">
-                          {designer ? designer.name : "Unassigned"}
-                        </span>
+                      <div className="flex items-center gap-1 mt-auto pt-2 text-sm font-medium border-t border-zinc-100 dark:border-zinc-800/50">
+                        {(() => {
+                          const ids = event.assignedDesignerIds || [];
+                          if (event.assignedDesignerId && !ids.includes(event.assignedDesignerId)) ids.push(event.assignedDesignerId);
+                          
+                          if (ids.length === 0) {
+                            return <span className="text-zinc-700 dark:text-zinc-300 text-xs italic">Unassigned</span>;
+                          }
+                          return ids.map((dId: string) => {
+                            const d = designers.find(x => x.id === dId);
+                            if (!d) return null;
+                            return (
+                              <div key={dId} className="flex items-center gap-1" title={d.name}>
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-[10px] bg-zinc-200 text-zinc-700">{d.name[0]}</AvatarFallback>
+                                </Avatar>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     </CardContent>
                   </div>
@@ -324,7 +376,12 @@ export default function LeadDashboard() {
                           Cancel
                         </Button>
                       )}
-                      {event.assignedDesignerId && event.status !== "CANCELLED" && (
+                      {event.status !== "CANCELLED" && event.status !== "COMPLETED" && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950" onClick={(e) => { e.stopPropagation(); handleCompleteEvent(event.id); }}>
+                          Mark Completed
+                        </Button>
+                      )}
+                      {((event.assignedDesignerIds && event.assignedDesignerIds.length > 0) || event.assignedDesignerId) && event.status !== "CANCELLED" && (
                         <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); handleRequestStatusUpdate(event.id); }}>
                           Request Update
                         </Button>
@@ -360,7 +417,7 @@ export default function LeadDashboard() {
                       <Button onClick={() => handleRespondToDesignerRequest(req.id, event.id, designer.id, "APPROVED")} className="bg-emerald-600 hover:bg-emerald-700 w-full">
                         Approve
                       </Button>
-                      
+
                       <Dialog open={selectedRejectRequestId === req.id} onOpenChange={(open) => !open && setSelectedRejectRequestId(null)}>
                         <DialogTrigger render={<Button variant="destructive" className="w-full" onClick={() => setSelectedRejectRequestId(req.id)} />}>
                           Deny
@@ -371,7 +428,7 @@ export default function LeadDashboard() {
                           </DialogHeader>
                           <div className="py-4">
                             <Label>Reason for rejection</Label>
-                            <Textarea 
+                            <Textarea
                               value={rejectReason}
                               onChange={(e) => setRejectReason(e.target.value)}
                               className="mt-2"
@@ -397,9 +454,9 @@ export default function LeadDashboard() {
             )}
           </div>
         </TabsContent>
-        
+
         <TabsContent value="designers" className="space-y-6">
-           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {designers.map((designer) => (
               <Card key={designer.id}>
                 <CardHeader className="flex flex-row items-center gap-4">

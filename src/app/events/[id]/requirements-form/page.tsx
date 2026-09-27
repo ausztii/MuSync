@@ -31,6 +31,7 @@ export default function RequirementsFormPage() {
   const [selectedPosters, setSelectedPosters] = useState<string[]>([]);
   const [context, setContext] = useState("");
   const [contactInfo, setContactInfo] = useState("");
+  const [expectedDate, setExpectedDate] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -76,6 +77,7 @@ export default function RequirementsFormPage() {
           posters: selectedPosters.map(pid => POSTER_TYPES.find(p => p.id === pid)?.label),
           context,
           contactInfo,
+          expectedDate,
           submittedAt: new Date().toISOString(),
         }
       });
@@ -155,6 +157,17 @@ export default function RequirementsFormPage() {
                   className="min-h-[150px]"
                   value={context}
                   onChange={(e) => setContext(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="expectedDate" className="text-base">Expected Date to Receive Posters <span className="text-red-500">*</span></Label>
+                <Input
+                  id="expectedDate"
+                  type="date"
+                  required
+                  value={expectedDate}
+                  onChange={(e) => setExpectedDate(e.target.value)}
                 />
               </div>
 
