@@ -241,7 +241,7 @@ export default function LeadDashboard() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="designer">Assign Designer (Optional)</Label>
-                    <Select onValueChange={val => setNewEvent({...newEvent, designerId: val === "none" ? "" : val})}>
+                    <Select onValueChange={(val: string | null) => setNewEvent({...newEvent, designerId: val === "none" || val === null ? "" : val})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a designer" />
                       </SelectTrigger>
@@ -302,7 +302,7 @@ export default function LeadDashboard() {
                   <CardFooter className="bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 p-4 grid gap-2">
                     {event.status === "UNASSIGNED" && event.status !== "CANCELLED" && (
                       <div className="flex gap-2">
-                        <Select onValueChange={(val) => handleAssignDesigner(event.id, val)}>
+                        <Select onValueChange={(val: string | null) => handleAssignDesigner(event.id, val || "")}>
                           <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Assign Designer" />
                           </SelectTrigger>
